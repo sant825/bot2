@@ -7,8 +7,10 @@
     "risk_per_trade_percent": 1.0,
     "risk_reward_ratio": 2.0,
     "max_open_positions": 5,
-    "max_daily_loss_percent": 3.0
+    "max_daily_loss_percent": 3.0,
+    "trailing_stop_percent": 1.5
   },
+  "volume_threshold": 0.8,
   "rsi": {
     "period": 14,
     "oversold": 30,

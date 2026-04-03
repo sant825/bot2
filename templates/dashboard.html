@@ -168,6 +168,14 @@
     <div class="label">Abgelehnt</div>
     <div class="value yellow" id="skipped">–</div>
   </div>
+  <div class="card">
+    <div class="label">Win-Rate</div>
+    <div class="value" id="winrate">–</div>
+  </div>
+  <div class="card">
+    <div class="label">Profit Factor</div>
+    <div class="value" id="profitfactor">–</div>
+  </div>
 </div>
 
 <!-- Charts -->
@@ -366,6 +374,20 @@
 
     pushEquityPoint(d.account_value);
     updatePositionsTable(d.positions_list || []);
+
+    // Win-Rate
+    const wrEl = document.getElementById('winrate');
+    if (d.wins !== undefined) {
+      const total = (d.wins || 0) + (d.losses || 0);
+      wrEl.textContent = total > 0 ? `${d.win_rate}%` : '–';
+      wrEl.className   = 'value ' + (d.win_rate >= 50 ? 'green' : 'red');
+    }
+    // Profit Factor
+    const pfEl = document.getElementById('profitfactor');
+    if (d.profit_factor !== undefined) {
+      pfEl.textContent = d.profit_factor > 0 ? d.profit_factor : '–';
+      pfEl.className   = 'value ' + (d.profit_factor >= 1 ? 'green' : 'red');
+    }
   });
 
   function updatePositionsTable(positions) {
