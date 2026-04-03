@@ -1,0 +1,18 @@
+# API Keys & Credentials - NIEMALS ins Repo!
+.env
+*.json
+!config.json
+
+# Virtual Environment
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# IDE
+.vscode/

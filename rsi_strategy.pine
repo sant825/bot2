@@ -1,0 +1,42 @@
+//@version=5
+strategy("RSI Trading Bot", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+
+// ─── Einstellungen ───────────────────────────────────────────────────────────
+rsi_period   = input.int(14,  "RSI Periode")
+rsi_ob       = input.int(70,  "RSI Überkauft")
+rsi_os       = input.int(30,  "RSI Überverkauft")
+ema_period   = input.int(200, "EMA Periode")
+webhook_url  = input.string("https://coalitional-untricked-kyong.ngrok-free.dev/webhook", "Webhook URL")
+secret       = input.string("MeinGeheimesPasswort123", "Webhook Secret")
+
+// ─── Indikatoren ─────────────────────────────────────────────────────────────
+rsi_val  = ta.rsi(close, rsi_period)
+ema_val  = ta.ema(close, ema_period)
+atr_val  = ta.atr(14)
+
+// ─── Signale ─────────────────────────────────────────────────────────────────
+buy_signal  = ta.crossover(rsi_val, rsi_os)  and close > ema_val
+sell_signal = ta.crossunder(rsi_val, rsi_ob) and close < ema_val
+
+// ─── Strategie (Backtest in TradingView) ─────────────────────────────────────
+if buy_signal
+    strategy.entry("Long", strategy.long)
+    alert('{"secret":"' + secret + '","symbol":"' + syminfo.ticker + '","signal":"buy","entry_price":' + str.tostring(close) + ',"rsi":' + str.tostring(math.round(rsi_val, 2)) + ',"ema":' + str.tostring(math.round(ema_val, 2)) + ',"atr":' + str.tostring(math.round(atr_val, 4)) + '}', alert.freq_once_per_bar)
+
+if sell_signal
+    strategy.close("Long")
+    strategy.entry("Short", strategy.short)
+    alert('{"secret":"' + secret + '","symbol":"' + syminfo.ticker + '","signal":"sell","entry_price":' + str.tostring(close) + ',"rsi":' + str.tostring(math.round(rsi_val, 2)) + ',"ema":' + str.tostring(math.round(ema_val, 2)) + ',"atr":' + str.tostring(math.round(atr_val, 4)) + '}', alert.freq_once_per_bar)
+
+// ─── Chart Anzeige ────────────────────────────────────────────────────────────
+plot(ema_val, "EMA 200", color=color.blue, linewidth=2)
+bgcolor(buy_signal  ? color.new(color.green, 85) : na)
+bgcolor(sell_signal ? color.new(color.red,   85) : na)
+
+plotshape(buy_signal,  "BUY",  shape.triangleup,   location.belowbar, color.green, size=size.small)
+plotshape(sell_signal, "SELL", shape.triangledown, location.abovebar, color.red,   size=size.small)
+
+// RSI Panel
+hline(rsi_ob, "Überkauft",   color.red,   linestyle=hline.style_dashed)
+hline(rsi_os, "Überverkauft", color.green, linestyle=hline.style_dashed)
+hline(50,     "Mitte",        color.gray,  linestyle=hline.style_dotted)

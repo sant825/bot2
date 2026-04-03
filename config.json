@@ -1,0 +1,36 @@
+{
+  "alpaca": {
+    "paper_trading": true,
+    "base_url": "https://paper-api.alpaca.markets"
+  },
+  "risk_management": {
+    "risk_per_trade_percent": 1.0,
+    "risk_reward_ratio": 2.0,
+    "max_open_positions": 5,
+    "max_daily_loss_percent": 3.0
+  },
+  "rsi": {
+    "period": 14,
+    "oversold": 30,
+    "overbought": 70
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "webhook_secret": "DEIN_GEHEIMES_PASSWORT"
+  },
+  "google_sheets": {
+    "spreadsheet_name": "Trading Bot Journal",
+    "credentials_file": "trai-492119-59dbe1fe47ac.json"
+  },
+  "symbol_map": {
+    "XAUUSD": "GLD",
+    "XAUSD":  "GLD",
+    "GOLD":   "GLD",
+    "SPX":    "SPY",
+    "SP500":  "SPY",
+    "US500":  "SPY",
+    "SPX500": "SPY"
+  },
+  "ml_symbols": ["AAPL", "GLD", "SPY"]
+}
