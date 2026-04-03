@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Bot Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -79,6 +80,65 @@
     #log { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; font-family:monospace; font-size:0.78rem; max-height:180px; overflow-y:auto; color:#8b949e; }
     #log .entry { margin-bottom:3px; }
     #log .entry .ts { color:#58a6ff; }
+
+    /* ── Mobile Responsive ─────────────────────────────────────── */
+    @media (max-width: 768px) {
+      body { padding:12px 10px 80px; }
+
+      header { flex-direction:column; align-items:flex-start; gap:6px; margin-bottom:14px; }
+      header h1 { font-size:1.1rem; }
+      #clock { font-size:0.78rem; }
+
+      /* Tabs: scrollable row at bottom */
+      .tabs {
+        position:fixed; bottom:0; left:0; right:0; z-index:100;
+        background:#161b22; border-top:1px solid #30363d;
+        display:flex; gap:0; margin:0; padding:0;
+        overflow-x:auto; -webkit-overflow-scrolling:touch;
+      }
+      .tab {
+        flex:1; text-align:center; border-radius:0; border:none;
+        border-right:1px solid #30363d;
+        padding:12px 8px; font-size:0.78rem; min-width:80px;
+      }
+      .tab:last-child { border-right:none; }
+      .tab.active { background:#0d1117; border-bottom:3px solid #58a6ff; }
+
+      /* Cards: 2 per row on mobile */
+      .cards { grid-template-columns:repeat(2, 1fr); gap:8px; margin-bottom:14px; }
+      .card { padding:12px; }
+      .card .value { font-size:1.3rem; }
+      .card .label { font-size:0.65rem; }
+
+      /* Charts: stack vertically */
+      .charts-row { grid-template-columns:1fr; gap:12px; }
+      .chart-box { padding:14px; }
+      .chart-wrap { height:160px; }
+
+      /* Scanner bar: stack items */
+      .scanner-bar { flex-wrap:wrap; gap:10px; padding:12px; }
+      .scanner-bar > div { min-width:45%; }
+      .scanner-bar > div[style*="margin-left:auto"] { margin-left:0 !important; text-align:left !important; }
+
+      /* Tables: horizontal scroll */
+      .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:20px; }
+      table { margin-bottom:0; min-width:480px; }
+      th, td { padding:8px 10px; font-size:0.78rem; }
+
+      /* History summary cards: 2x2 */
+      .history-summary { grid-template-columns:repeat(2,1fr) !important; }
+
+      /* History header row */
+      .history-header { flex-wrap:wrap; gap:8px; }
+      .history-header button { font-size:0.75rem; padding:6px 12px; }
+
+      .section-title { font-size:0.7rem; margin-bottom:8px; }
+    }
+
+    @media (max-width: 400px) {
+      .cards { grid-template-columns:1fr 1fr; }
+      .card .value { font-size:1.1rem; }
+    }
   </style>
 </head>
 <body>
@@ -130,12 +190,14 @@
 
   <!-- Offene Positionen -->
   <p class="section-title">Offene Positionen</p>
+  <div class="table-scroll">
   <table>
     <thead><tr><th>Symbol</th><th>Seite</th><th>Menge</th><th>Einstieg</th><th>Aktuell</th><th>PnL</th><th>PnL %</th></tr></thead>
     <tbody id="positions-body">
       <tr><td colspan="7" style="color:#8b949e;text-align:center">Keine offenen Positionen</td></tr>
     </tbody>
   </table>
+  </div>
 
 </div>
 
@@ -152,6 +214,7 @@
   </div>
 
   <p class="section-title">Top Kandidaten</p>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -163,6 +226,7 @@
       <tr><td colspan="8" style="color:#8b949e;text-align:center">Warte auf ersten Screener-Run (täglich 9:30 Uhr NY)...</td></tr>
     </tbody>
   </table>
+  </div>
 
   <!-- Score Chart -->
   <div class="chart-box" style="margin-top:20px">
@@ -176,6 +240,7 @@
 <div id="tab-trades" class="tab-content">
 
   <p class="section-title">Heutige Trades</p>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr><th>Zeit</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>Stop Loss</th><th>Take Profit</th><th>Risiko</th><th>RR</th></tr>
@@ -184,15 +249,16 @@
       <tr><td colspan="8" style="color:#8b949e;text-align:center">Warte auf Trades...</td></tr>
     </tbody>
   </table>
+  </div>
 
   <!-- Trade Historie -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+  <div class="history-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <p class="section-title" style="margin:0">Trade Historie (30 Tage)</p>
     <button onclick="loadHistory()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:0.78rem">Aktualisieren</button>
   </div>
 
   <!-- Zusammenfassung -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+  <div class="history-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     <div class="card"><div class="label">Gesamt Trades</div><div class="value blue" id="h-total">–</div></div>
     <div class="card"><div class="label">Gesamt PnL</div><div class="value" id="h-pnl">–</div></div>
     <div class="card"><div class="label">Bester Trade</div><div class="value green" id="h-best">–</div></div>
@@ -205,6 +271,7 @@
     <div class="chart-wrap" style="height:180px"><canvas id="pnlChart"></canvas></div>
   </div>
 
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -216,6 +283,7 @@
       <tr><td colspan="7" style="color:#8b949e;text-align:center">Lade Historie...</td></tr>
     </tbody>
   </table>
+  </div>
 
   <p class="section-title" style="margin-top:20px">Live Log</p>
   <div id="log">
