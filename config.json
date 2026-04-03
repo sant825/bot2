@@ -12,6 +12,7 @@
   },
   "volume_threshold": 0.8,
   "scan_interval_seconds": 300,
+  "screener_run_hour": 9,
   "rsi": {
     "period": 14,
     "oversold": 30,

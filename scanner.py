@@ -208,14 +208,16 @@ class Scanner:
 
     def run(self):
         """Haupt-Loop: scannt alle Symbole im Takt."""
+        import screener as sc
+
         with open("config.json") as f:
             cfg = json.load(f)
 
-        interval = cfg.get("scan_interval_seconds", 300)  # Standard: 5 Minuten
-        symbols  = list(cfg.get("symbol_map", {}).values())
-        symbols  = list(dict.fromkeys(symbols))  # Duplikate entfernen
+        interval        = cfg.get("scan_interval_seconds", 300)
+        screener_hour   = cfg.get("screener_run_hour", 9)  # Uhr NY-Zeit
+        last_screen_day = None
 
-        print(f"[Scanner] Gestartet | Symbole: {symbols} | Interval: {interval}s")
+        print(f"[Scanner] Gestartet | Interval: {interval}s")
 
         while True:
             self.last_scan = datetime.now().strftime("%H:%M:%S")
@@ -234,9 +236,21 @@ class Scanner:
                 time.sleep(60)
                 continue
 
-            # Alle Symbole scannen
             with open("config.json") as f:
                 cfg = json.load(f)
+
+            # Screener einmal täglich morgens laufen lassen
+            ny      = pytz.timezone("America/New_York")
+            now_ny  = datetime.now(ny)
+            today   = now_ny.strftime("%Y-%m-%d")
+            if last_screen_day != today and now_ny.hour >= screener_hour:
+                print("[Scanner] Starte täglichen Screener...")
+                sc.run_screener(push_fn=self.push_fn, max_results=10)
+                last_screen_day = today
+
+            # Aktive Symbole: Basis + Screener-Kandidaten
+            symbols = sc.get_active_symbols()
+            symbols = list(dict.fromkeys(symbols))
 
             self.push_fn("scanner", {
                 "status":    "Scanne Märkte...",
