@@ -11,6 +11,7 @@
     "trailing_stop_percent": 1.5
   },
   "volume_threshold": 0.8,
+  "scan_interval_seconds": 300,
   "rsi": {
     "period": 14,
     "oversold": 30,

@@ -224,6 +224,18 @@
 </table>
 
 <!-- Log -->
+<!-- Scanner Status -->
+<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
+  <div>
+    <div style="font-size:0.7rem;color:#8b949e;text-transform:uppercase;margin-bottom:4px">Scanner</div>
+    <div id="scanner-status" style="font-size:0.9rem;color:#58a6ff">Startet...</div>
+  </div>
+  <div style="margin-left:auto;text-align:right">
+    <div style="font-size:0.7rem;color:#8b949e;margin-bottom:4px">Letzter Scan</div>
+    <div id="scanner-last" style="font-size:0.9rem">–</div>
+  </div>
+</div>
+
 <p class="section-title">Live Log</p>
 <div id="log">
   <div class="entry"><span class="ts">[System]</span> Dashboard geladen...</div>
@@ -374,6 +386,12 @@
 
     pushEquityPoint(d.account_value);
     updatePositionsTable(d.positions_list || []);
+
+    // Scanner Status
+    if (d.scanner) {
+      document.getElementById('scanner-status').textContent = d.scanner.status || '–';
+      document.getElementById('scanner-last').textContent   = d.scanner.last_scan || '–';
+    }
 
     // Win-Rate
     const wrEl = document.getElementById('winrate');

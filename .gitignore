@@ -1,7 +1,10 @@
 # API Keys & Credentials - NIEMALS ins Repo!
 .env
-*.json
-!config.json
+trai-492119-59dbe1fe47ac.json
+*credentials*.json
+
+# ML Modelle (zu groß für GitHub, lokal trainieren)
+model_*.json
 
 # Virtual Environment
 venv/
@@ -13,6 +16,3 @@ __pycache__/
 
 # Logs
 *.log
-
-# IDE
-.vscode/

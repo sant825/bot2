@@ -18,12 +18,14 @@ import pandas as pd
 import broker
 import risk_manager
 import sheets_logger
+from scanner import Scanner
 
 load_dotenv()
 
 app = Flask(__name__)
 trades_today  = []
 skipped_today = 0
+scanner_status = {"status": "Startet...", "last_scan": "–"}
 
 # Separate ML-Modelle pro Symbol laden
 models = {}
@@ -121,6 +123,7 @@ def get_status_data() -> dict:
             "profit_factor":  stats["profit_factor"],
             "wins":           stats["wins"],
             "losses":         stats["losses"],
+            "scanner":        scanner_status,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -158,6 +161,80 @@ def status_broadcaster():
 
 
 threading.Thread(target=status_broadcaster, daemon=True).start()
+
+
+def execute_trade(symbol: str, signal: str, atr: float, **_):
+    """Wird vom Scanner aufgerufen — führt dieselbe Pipeline wie der Webhook aus."""
+    global skipped_today
+
+    with open("config.json") as f:
+        cfg = json.load(f)
+
+    def skip(reason):
+        global skipped_today
+        skipped_today += 1
+        push_event("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+        print(f"[Scanner] Skip {symbol}: {reason}")
+
+    open_positions = broker.get_open_positions()
+    open_symbols   = [p.symbol for p in open_positions]
+
+    if len(open_positions) >= cfg["risk_management"]["max_open_positions"]:
+        return skip(f"Max. Positionen erreicht")
+    if symbol in open_symbols and signal == "buy":
+        return skip(f"Position in {symbol} bereits offen")
+
+    try:
+        entry_price = broker.get_current_price(symbol)
+    except Exception as e:
+        return skip(f"Preis Fehler: {e}")
+
+    ok, reason = broker.check_volume(symbol)
+    if not ok:
+        return skip(reason)
+
+    account_value = broker.get_account_value()
+    trade_params  = risk_manager.calculate_trade(entry_price, signal, account_value, atr=atr)
+
+    needed = int(trade_params["quantity"]) * entry_price
+    if needed > broker.get_buying_power():
+        return skip(f"Nicht genug Kaufkraft")
+
+    order = broker.place_order(symbol, signal, trade_params["quantity"],
+                                trade_params["sl_price"], trade_params["tp_price"])
+
+    log_entry = {**trade_params, **order, "account_value": account_value, "pnl": 0}
+    try:
+        sheets_logger.log_trade(log_entry)
+    except Exception as e:
+        print(f"Sheets Fehler: {e}")
+
+    trades_today.append(log_entry)
+    push_event("trade", {
+        "time":   datetime.now().strftime("%H:%M:%S"),
+        "symbol": symbol, "signal": signal,
+        "entry":  trade_params["entry_price"],
+        "sl":     trade_params["sl_price"],
+        "tp":     trade_params["tp_price"],
+        "risk":   f"{trade_params['risk_percent']}% = {trade_params['risk_amount']}$",
+        "rr":     trade_params["rr_ratio"],
+    })
+    push_event("status", get_status_data())
+    print(f"[Scanner] Trade ausgeführt: {signal.upper()} {symbol} @ {entry_price}")
+
+
+def start_scanner():
+    def push_with_scanner(event_type, data):
+        global scanner_status
+        if event_type == "scanner":
+            scanner_status = data
+        push_event(event_type, data)
+
+    s = Scanner(execute_fn=execute_trade, push_fn=push_with_scanner)
+    s.run()
+
+
+threading.Thread(target=start_scanner, daemon=True).start()
 
 
 # ─── Routen ──────────────────────────────────────────────────────────────────
