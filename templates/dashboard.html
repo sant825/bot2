@@ -175,7 +175,7 @@
 <!-- ═══ TAB: TRADES & LOG ═══ -->
 <div id="tab-trades" class="tab-content">
 
-  <p class="section-title">Letzte Trades</p>
+  <p class="section-title">Heutige Trades</p>
   <table>
     <thead>
       <tr><th>Zeit</th><th>Symbol</th><th>Signal</th><th>Entry</th><th>Stop Loss</th><th>Take Profit</th><th>Risiko</th><th>RR</th></tr>
@@ -185,7 +185,39 @@
     </tbody>
   </table>
 
-  <p class="section-title">Live Log</p>
+  <!-- Trade Historie -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <p class="section-title" style="margin:0">Trade Historie (30 Tage)</p>
+    <button onclick="loadHistory()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:0.78rem">Aktualisieren</button>
+  </div>
+
+  <!-- Zusammenfassung -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    <div class="card"><div class="label">Gesamt Trades</div><div class="value blue" id="h-total">–</div></div>
+    <div class="card"><div class="label">Gesamt PnL</div><div class="value" id="h-pnl">–</div></div>
+    <div class="card"><div class="label">Bester Trade</div><div class="value green" id="h-best">–</div></div>
+    <div class="card"><div class="label">Schlechtester Trade</div><div class="value red" id="h-worst">–</div></div>
+  </div>
+
+  <!-- PnL Chart -->
+  <div class="chart-box" style="margin-bottom:20px">
+    <h2>PnL Verlauf (letzte 30 Tage)</h2>
+    <div class="chart-wrap" style="height:180px"><canvas id="pnlChart"></canvas></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th><th>Zeit</th><th>Symbol</th><th>Seite</th>
+        <th>Menge</th><th>Preis</th><th>Volumen</th>
+      </tr>
+    </thead>
+    <tbody id="history-table">
+      <tr><td colspan="7" style="color:#8b949e;text-align:center">Lade Historie...</td></tr>
+    </tbody>
+  </table>
+
+  <p class="section-title" style="margin-top:20px">Live Log</p>
   <div id="log">
     <div class="entry"><span class="ts">[System]</span> Dashboard geladen...</div>
   </div>
@@ -403,7 +435,104 @@
   });
 
   es.onerror = () => addLog('Verbindung getrennt...', '#f85149');
-  es.onopen  = () => addLog('Verbunden mit Bot', '#3fb950');
+  es.onopen  = () => { addLog('Verbunden mit Bot', '#3fb950'); loadHistory(); };
+
+  // ── PnL Chart ─────────────────────────────────────────────────
+  const pnlChart = new Chart(document.getElementById('pnlChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{
+      label: 'PnL ($)',
+      data: [],
+      backgroundColor: [],
+      borderRadius: 4,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+        y: {
+          ticks: { color: '#8b949e', font: { size: 10 }, callback: v => (v >= 0 ? '+' : '') + '$' + v.toLocaleString('de-DE') },
+          grid: { color: '#21262d' }
+        }
+      }
+    }
+  });
+
+  // ── Trade Historie laden ───────────────────────────────────────
+  async function loadHistory() {
+    document.getElementById('history-table').innerHTML =
+      '<tr><td colspan="7" style="color:#8b949e;text-align:center">Lade...</td></tr>';
+    try {
+      const res    = await fetch('/history');
+      const data   = await res.json();
+      const trades = data.trades || [];
+
+      const tbody = document.getElementById('history-table');
+      if (!trades.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:#8b949e;text-align:center">Keine abgeschlossenen Trades gefunden</td></tr>';
+        return;
+      }
+
+      // Trades nach Datum gruppieren für PnL-Berechnung
+      const byDate = {};
+      trades.forEach(t => {
+        if (!byDate[t.date]) byDate[t.date] = { buy: null, sell: null };
+        if (t.side === 'buy')  byDate[t.date].buy  = t;
+        if (t.side === 'sell') byDate[t.date].sell = t;
+      });
+
+      // PnL pro Trade-Paar berechnen
+      const pnlByDate = {};
+      Object.entries(byDate).forEach(([date, pair]) => {
+        if (pair.buy && pair.sell) {
+          const pnl = (pair.sell.price - pair.buy.price) * Math.min(pair.buy.qty, pair.sell.qty);
+          pnlByDate[date] = round2(pnl);
+        }
+      });
+
+      function round2(v) { return Math.round(v * 100) / 100; }
+
+      // Tabelle füllen
+      tbody.innerHTML = trades.map(t => {
+        const badge = t.side === 'buy' ? 'badge-buy' : 'badge-sell';
+        return `<tr>
+          <td>${t.date}</td>
+          <td>${t.time}</td>
+          <td><strong>${t.symbol}</strong></td>
+          <td><span class="badge ${badge}">${t.side.toUpperCase()}</span></td>
+          <td>${t.qty}</td>
+          <td>${t.price} $</td>
+          <td>${t.value.toLocaleString('de-DE')} $</td>
+        </tr>`;
+      }).join('');
+
+      // Zusammenfassung
+      const pnlValues  = Object.values(pnlByDate);
+      const totalPnl   = round2(pnlValues.reduce((a, b) => a + b, 0));
+      const best       = pnlValues.length ? Math.max(...pnlValues) : 0;
+      const worst      = pnlValues.length ? Math.min(...pnlValues) : 0;
+
+      document.getElementById('h-total').textContent = trades.length;
+      const pnlEl = document.getElementById('h-pnl');
+      pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + totalPnl + ' $';
+      pnlEl.className   = 'value ' + (totalPnl >= 0 ? 'green' : 'red');
+      document.getElementById('h-best').textContent  = '+' + best + ' $';
+      document.getElementById('h-worst').textContent = worst + ' $';
+
+      // PnL Chart
+      const dates  = Object.keys(pnlByDate).sort();
+      const values = dates.map(d => pnlByDate[d]);
+      pnlChart.data.labels               = dates;
+      pnlChart.data.datasets[0].data     = values;
+      pnlChart.data.datasets[0].backgroundColor = values.map(v => v >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)');
+      pnlChart.update();
+
+    } catch(e) {
+      document.getElementById('history-table').innerHTML =
+        `<tr><td colspan="7" style="color:#f85149;text-align:center">Fehler: ${e.message}</td></tr>`;
+    }
+  }
 </script>
 </body>
 </html>

@@ -407,6 +407,52 @@ def status():
     return jsonify(get_status_data())
 
 
+@app.route("/history", methods=["GET"])
+def history():
+    """Gibt geschlossene Trades der letzten 30 Tage zurück."""
+    try:
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+        import pytz
+        from datetime import timedelta
+
+        client = broker.get_client()
+        ny     = pytz.timezone("America/New_York")
+        start  = datetime.now(ny) - timedelta(days=30)
+
+        req    = GetOrdersRequest(
+            status=QueryOrderStatus.CLOSED,
+            after=start,
+            limit=100,
+        )
+        orders = client.get_orders(req)
+
+        result = []
+        for o in orders:
+            if str(o.status) != "OrderStatus.filled":
+                continue
+            filled = float(o.filled_avg_price or 0)
+            qty    = float(o.qty or 0)
+            side   = str(o.side.value)
+
+            # PnL schätzen: für verkaufte Positionen
+            # (exakter PnL kommt aus Alpaca Activities)
+            result.append({
+                "date":     str(o.filled_at)[:10] if o.filled_at else str(o.created_at)[:10],
+                "time":     str(o.filled_at)[11:16] if o.filled_at else "–",
+                "symbol":   o.symbol,
+                "side":     side,
+                "qty":      qty,
+                "price":    round(filled, 2),
+                "value":    round(filled * qty, 2),
+                "order_id": str(o.id),
+            })
+
+        return jsonify({"trades": result[::-1]})  # Neueste zuerst
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     with open("config.json") as f:
         cfg = json.load(f)
