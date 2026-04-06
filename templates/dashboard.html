@@ -224,7 +224,7 @@
     <div style="margin-left:auto;text-align:right"><div class="s-label">Letzter Run</div><div class="s-val" id="screener-last-run">–</div></div>
   </div>
 
-  <div class="progress-wrap" id="screener-progress-wrap">
+  <div class="progress-wrap" id="screener-progress-wrap" style="display:none">
     <div class="progress-fill" id="screener-progress-bar"></div>
   </div>
 
@@ -401,7 +401,37 @@
   const signalChart  = new Chart(document.getElementById('signalChart').getContext('2d'), {
     type:'doughnut',
     data:{ labels:['BUY','SELL','Abgelehnt'], datasets:[{data:[0,0,0],backgroundColor:['#3fb950','#f85149','#d29922'],borderColor:'#161b22',borderWidth:3}] },
-    options:{ responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{legend:{position:'bottom',labels:{color:'#8b949e',font:{size:11},padding:16}}}, cutout:'65%' }
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:400},
+      plugins:{
+        legend:{position:'bottom',labels:{color:'#8b949e',font:{size:11},padding:16}},
+        emptyDoughnut: {
+          color:'#30363d', width:2, radiusDecrease:20,
+          text:'Noch keine\nSignale', textColor:'#8b949e', fontSize:11
+        }
+      },
+      cutout:'65%'
+    }
+  });
+
+  // Plugin: leeren Donut mit Text anzeigen
+  Chart.register({
+    id: 'emptyDoughnut',
+    afterDraw(chart) {
+      const opts = chart.options.plugins.emptyDoughnut;
+      if (!opts) return;
+      const total = chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+      if (total > 0) return;
+      const {ctx, chartArea:{left,top,right,bottom}} = chart;
+      const cx = (left+right)/2, cy = (top+bottom)/2;
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = opts.textColor || '#8b949e';
+      ctx.font = `${opts.fontSize||11}px sans-serif`;
+      const lines = (opts.text||'Keine Daten').split('\n');
+      lines.forEach((l,i) => ctx.fillText(l, cx, cy + (i - (lines.length-1)/2) * 16));
+      ctx.restore();
+    }
   });
 
   // ── Score Chart ───────────────────────────────────────────────
@@ -545,12 +575,17 @@
   function addTradeRow(d, prepend = true) {
     const tbody = document.getElementById('trade-table');
     if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
-    const badge = d.signal === 'buy' ? 'badge-buy' : 'badge-sell';
+    const badge  = d.signal === 'buy' ? 'badge-buy' : 'badge-sell';
+    const entry  = d.entry  ?? d.entry_price ?? '–';
+    const sl     = d.sl     ? `<span class="red">${d.sl} $</span>`   : '<span class="gray">–</span>';
+    const tp     = d.tp     ? `<span class="green">${d.tp} $</span>` : '<span class="gray">–</span>';
+    const risk   = d.risk   ?? '–';
+    const rr     = d.rr     ? `1:${d.rr}` : '–';
+    const time   = d.time   ?? d.created_at ?? '–';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${d.time}</td><td><strong>${d.symbol}</strong></td>
+    tr.innerHTML = `<td>${time}</td><td><strong>${d.symbol}</strong></td>
       <td><span class="badge ${badge}">${d.signal.toUpperCase()}</span></td>
-      <td>${d.entry} $</td><td class="red">${d.sl} $</td>
-      <td class="green">${d.tp} $</td><td>${d.risk}</td><td>1:${d.rr}</td>`;
+      <td>${entry} $</td><td>${sl}</td><td>${tp}</td><td>${risk}</td><td>${rr}</td>`;
     if (prepend) tbody.prepend(tr); else tbody.appendChild(tr);
   }
 
