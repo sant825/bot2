@@ -11,7 +11,11 @@
 
     header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
     header h1 { font-size:1.3rem; color:#58a6ff; letter-spacing:1px; }
-    #clock { color:#8b949e; font-size:0.85rem; }
+    .clocks { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+    .clock-row { display:flex; align-items:center; gap:6px; font-size:0.82rem; color:#8b949e; }
+    .clock-label { font-size:0.68rem; text-transform:uppercase; color:#484f58; }
+    .market-open  { color:#3fb950; }
+    .market-closed { color:#8b949e; }
 
     #status-dot {
       display:inline-block; width:10px; height:10px;
@@ -87,7 +91,8 @@
 
       header { flex-direction:column; align-items:flex-start; gap:6px; margin-bottom:14px; }
       header h1 { font-size:1.1rem; }
-      #clock { font-size:0.78rem; }
+      .clocks { align-items:flex-start; }
+      .clock-row { font-size:0.75rem; }
 
       /* Tabs: scrollable row at bottom */
       .tabs {
@@ -145,7 +150,17 @@
 
 <header>
   <h1><span id="status-dot"></span>Trading Bot Dashboard</h1>
-  <span id="clock"></span>
+  <div class="clocks">
+    <div class="clock-row">
+      <span class="clock-label">Lokal</span>
+      <span id="clock-local"></span>
+    </div>
+    <div class="clock-row">
+      <span class="clock-label">NYSE (NY)</span>
+      <span id="clock-ny"></span>
+      <span id="market-badge" style="font-size:0.68rem;padding:1px 7px;border-radius:10px;font-weight:bold"></span>
+    </div>
+  </div>
 </header>
 
 <!-- Tabs -->
@@ -302,9 +317,49 @@
   }
 
   // ── Uhr ──────────────────────────────────────────────────────
-  setInterval(() => {
-    document.getElementById('clock').textContent = new Date().toLocaleString('de-DE');
-  }, 1000);
+  function updateClocks() {
+    const now = new Date();
+
+    // Lokale Uhr
+    document.getElementById('clock-local').textContent = now.toLocaleString('de-DE');
+
+    // NYSE / New York Zeit
+    const nyStr = now.toLocaleString('en-US', { timeZone: 'America/New_York',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+    document.getElementById('clock-ny').textContent = nyStr;
+
+    // Markt-Status berechnen
+    const ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const day = ny.getDay(); // 0=So, 6=Sa
+    const h = ny.getHours(), m = ny.getMinutes();
+    const mins = h * 60 + m;
+    const badge = document.getElementById('market-badge');
+    if (day === 0 || day === 6) {
+      badge.textContent = 'Wochenende';
+      badge.className = 'market-closed';
+      badge.style.background = '#21262d';
+    } else if (mins >= 570 && mins < 600) {          // 9:30–10:00
+      badge.textContent = 'Volatil';
+      badge.className = 'market-closed';
+      badge.style.background = '#2d2208';
+      badge.style.color = '#d29922';
+    } else if (mins >= 600 && mins < 930) {           // 10:00–15:30
+      badge.textContent = '● Offen';
+      badge.className = 'market-open';
+      badge.style.background = '#0d2a0d';
+    } else if (mins >= 930 && mins < 960) {           // 15:30–16:00
+      badge.textContent = 'Bald zu';
+      badge.className = 'market-closed';
+      badge.style.background = '#2d2208';
+      badge.style.color = '#d29922';
+    } else {
+      badge.textContent = 'Geschlossen';
+      badge.className = 'market-closed';
+      badge.style.background = '#21262d';
+    }
+  }
+  updateClocks();
+  setInterval(updateClocks, 1000);
 
   // ── Log ──────────────────────────────────────────────────────
   const logEl = document.getElementById('log');
