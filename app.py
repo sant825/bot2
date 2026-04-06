@@ -114,6 +114,8 @@ def get_status_data() -> dict:
         } for p in positions]
 
         stats = calc_stats()
+        buys  = sum(1 for t in trades_today if t.get("signal") == "buy")
+        sells = sum(1 for t in trades_today if t.get("signal") == "sell")
         return {
             "account_value":  f"{value:,.2f} $",
             "open_positions": len(positions),
@@ -126,6 +128,9 @@ def get_status_data() -> dict:
             "profit_factor":  stats["profit_factor"],
             "wins":           stats["wins"],
             "losses":         stats["losses"],
+            "signals_buy":    buys,
+            "signals_sell":   sells,
+            "signals_skip":   skipped_today,
             "scanner":        scanner_status,
         }
     except Exception as e:

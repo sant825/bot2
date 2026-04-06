@@ -497,6 +497,15 @@
     pushEquity(d.account_value);
     updatePositions(d.positions_list || []);
 
+    // Signal-Verteilung Chart synchronisieren
+    if (d.signals_buy !== undefined) {
+      signalCounts.buy  = d.signals_buy;
+      signalCounts.sell = d.signals_sell;
+      signalCounts.skip = d.signals_skip;
+      signalChart.data.datasets[0].data = [signalCounts.buy, signalCounts.sell, signalCounts.skip];
+      signalChart.update();
+    }
+
     // Win-Rate & Profit Factor
     const total = (d.wins||0) + (d.losses||0);
     const wrEl  = document.getElementById('winrate');
