@@ -542,8 +542,7 @@
     }
   });
 
-  es.addEventListener('trade', e => {
-    const d = JSON.parse(e.data);
+  function addTradeRow(d, prepend = true) {
     const tbody = document.getElementById('trade-table');
     if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
     const badge = d.signal === 'buy' ? 'badge-buy' : 'badge-sell';
@@ -552,7 +551,20 @@
       <td><span class="badge ${badge}">${d.signal.toUpperCase()}</span></td>
       <td>${d.entry} $</td><td class="red">${d.sl} $</td>
       <td class="green">${d.tp} $</td><td>${d.risk}</td><td>1:${d.rr}</td>`;
-    tbody.prepend(tr);
+    if (prepend) tbody.prepend(tr); else tbody.appendChild(tr);
+  }
+
+  // Beim Neuladen: heutige Trades wiederherstellen
+  es.addEventListener('trades_init', e => {
+    const trades = JSON.parse(e.data);
+    if (!trades.length) return;
+    document.getElementById('trade-table').innerHTML = '';
+    trades.forEach(d => addTradeRow(d, false));
+  });
+
+  es.addEventListener('trade', e => {
+    const d = JSON.parse(e.data);
+    addTradeRow(d, true);
     if (d.signal === 'buy') signalCounts.buy++; else signalCounts.sell++;
     signalChart.data.datasets[0].data = [signalCounts.buy, signalCounts.sell, signalCounts.skip];
     signalChart.update();

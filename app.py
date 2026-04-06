@@ -255,10 +255,22 @@ def dashboard():
 @app.route("/stream")
 def stream():
     def event_generator():
+        import screener as sc
         q = queue.Queue(maxsize=20)
         with sse_lock:
             sse_clients.append(q)
+
+        # Beim Verbinden: aktuellen Stand sofort senden
         yield f"event: status\ndata: {json.dumps(get_status_data())}\n\n"
+
+        # Screener-Ergebnisse wiederherstellen (falls bereits gelaufen)
+        if sc.screener_results:
+            yield f"event: screener\ndata: {json.dumps({'status': 'Letzter Run: ' + (sc.last_screen_time or '–'), 'results': sc.screener_results, 'last_scan': sc.last_screen_time, 'progress': 100})}\n\n"
+
+        # Heutige Trades wiederherstellen
+        if trades_today:
+            yield f"event: trades_init\ndata: {json.dumps(trades_today)}\n\n"
+
         try:
             while True:
                 try:
