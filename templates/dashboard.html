@@ -192,9 +192,9 @@
   <p class="section-title">Offene Positionen</p>
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Symbol</th><th>Seite</th><th>Menge</th><th>Einstieg</th><th>Aktuell</th><th>PnL</th><th>PnL %</th></tr></thead>
+    <thead><tr><th>Symbol</th><th>Seite</th><th>Menge</th><th>Einstieg</th><th>Aktuell</th><th>Stop Loss</th><th>Take Profit</th><th>PnL</th><th>PnL %</th></tr></thead>
     <tbody id="positions-body">
-      <tr><td colspan="7" style="color:#8b949e;text-align:center">Keine offenen Positionen</td></tr>
+      <tr><td colspan="9" style="color:#8b949e;text-align:center">Keine offenen Positionen</td></tr>
     </tbody>
   </table>
   </div>
@@ -376,19 +376,24 @@
   function updatePositions(positions) {
     const tbody = document.getElementById('positions-body');
     if (!positions.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="color:#8b949e;text-align:center">Keine offenen Positionen</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="color:#8b949e;text-align:center">Keine offenen Positionen</td></tr>';
       return;
     }
     tbody.innerHTML = positions.map(p => {
-      const c  = p.pnl >= 0 ? '#3fb950' : '#f85149';
-      const s  = p.pnl >= 0 ? '+' : '';
-      const arr= p.current >= p.entry ? '▲' : '▼';
-      const ac = p.current >= p.entry ? '#3fb950' : '#f85149';
+      const c   = p.pnl >= 0 ? '#3fb950' : '#f85149';
+      const s   = p.pnl >= 0 ? '+' : '';
+      const arr = p.current >= p.entry ? '▲' : '▼';
+      const ac  = p.current >= p.entry ? '#3fb950' : '#f85149';
+      const slTxt = p.sl  ? `<span class="red">${p.sl} $</span>`   : '<span style="color:#8b949e">–</span>';
+      const tpTxt = p.tp  ? `<span class="green">${p.tp} $</span>` : '<span style="color:#8b949e">–</span>';
       return `<tr>
         <td><strong>${p.symbol}</strong></td>
         <td><span class="badge ${p.side==='long'?'badge-buy':'badge-sell'}">${p.side==='long'?'LONG':'SHORT'}</span></td>
-        <td>${p.qty}</td><td>${p.entry} $</td>
+        <td>${p.qty}</td>
+        <td>${p.entry} $</td>
         <td><span style="color:${ac}">${arr} ${p.current} $</span></td>
+        <td>${slTxt}</td>
+        <td>${tpTxt}</td>
         <td style="color:${c};font-weight:bold">${s}${p.pnl} $</td>
         <td style="color:${c}">${s}${p.pnl_pct} %</td>
       </tr>`;

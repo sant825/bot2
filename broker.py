@@ -51,6 +51,31 @@ def get_open_positions() -> list:
     return get_client().get_all_positions()
 
 
+def get_sl_tp_map() -> dict:
+    """
+    Gibt ein Dict {symbol: {"sl": price, "tp": price}} zurück,
+    indem alle offenen Stop/Limit-Orders (Bracket-Legs) geladen werden.
+    """
+    client = get_client()
+    req    = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=100)
+    orders = client.get_orders(req)
+    result = {}
+    for o in orders:
+        sym = o.symbol
+        if sym not in result:
+            result[sym] = {"sl": None, "tp": None}
+        ot = str(o.order_type).lower()
+        if "stop" in ot:
+            price = float(o.stop_price or o.trail_price or 0) or None
+            if price:
+                result[sym]["sl"] = round(price, 2)
+        elif "limit" in ot:
+            price = float(o.limit_price or 0) or None
+            if price:
+                result[sym]["tp"] = round(price, 2)
+    return result
+
+
 def close_position(symbol: str):
     get_client().close_position(symbol)
     print(f"Position geschlossen: {symbol}")

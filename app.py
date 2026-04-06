@@ -100,6 +100,7 @@ def get_status_data() -> dict:
         account   = broker.get_client().get_account()
         daily_pnl = float(account.equity) - float(account.last_equity)
 
+        sl_tp = broker.get_sl_tp_map()
         positions_list = [{
             "symbol":  p.symbol,
             "side":    str(p.side.value),
@@ -108,6 +109,8 @@ def get_status_data() -> dict:
             "current": round(float(p.current_price), 2),
             "pnl":     round(float(p.unrealized_pl or 0), 2),
             "pnl_pct": round(float(p.unrealized_plpc or 0) * 100, 2),
+            "sl":      sl_tp.get(p.symbol, {}).get("sl"),
+            "tp":      sl_tp.get(p.symbol, {}).get("tp"),
         } for p in positions]
 
         stats = calc_stats()
