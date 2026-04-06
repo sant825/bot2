@@ -33,7 +33,11 @@ def get_bars_df(symbol: str, timeframe: TimeFrame, limit: int = 250) -> pd.DataF
         feed=DataFeed.IEX,
     )
     bars = dc.get_stock_bars(req)
-    if symbol not in bars or not bars[symbol]:
+    try:
+        bar_list = bars[symbol]
+        if not bar_list:
+            return pd.DataFrame()
+    except Exception:
         return pd.DataFrame()
 
     rows = [{
@@ -42,7 +46,7 @@ def get_bars_df(symbol: str, timeframe: TimeFrame, limit: int = 250) -> pd.DataF
         "low":    b.low,
         "close":  b.close,
         "volume": b.volume,
-    } for b in bars[symbol]]
+    } for b in bar_list]
     return pd.DataFrame(rows)
 
 

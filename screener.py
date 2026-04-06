@@ -53,11 +53,15 @@ def get_bars_df(symbol: str, days: int = 20) -> Optional[pd.DataFrame]:
             feed=DataFeed.IEX,
         )
         bars = dc.get_stock_bars(req)
-        if symbol not in bars or len(bars[symbol]) < 10:
+        try:
+            bar_list = bars[symbol]
+            if len(bar_list) < 10:
+                return None
+        except Exception:
             return None
 
         rows = [{"close": b.close, "high": b.high,
-                 "low": b.low, "volume": b.volume} for b in bars[symbol]]
+                 "low": b.low, "volume": b.volume} for b in bar_list]
         return pd.DataFrame(rows)
     except Exception:
         return None
