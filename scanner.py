@@ -14,6 +14,7 @@ import xgboost as xgb
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed
 
 import broker
 
@@ -29,6 +30,7 @@ def get_bars_df(symbol: str, timeframe: TimeFrame, limit: int = 250) -> pd.DataF
         start=start,
         end=end,
         limit=limit,
+        feed=DataFeed.IEX,
     )
     bars = dc.get_stock_bars(req)
     if symbol not in bars or not bars[symbol]:
@@ -222,24 +224,10 @@ class Scanner:
         while True:
             self.last_scan = datetime.now().strftime("%H:%M:%S")
 
-            # Marktzeiten prüfen
-            ok, reason = broker.check_market_hours()
-            if not ok:
-                print(f"[Scanner] {reason} — warte...")
-                self.push_fn("scanner", {"status": reason, "last_scan": self.last_scan})
-                time.sleep(60)
-                continue
-
-            # Tägliches Verlustlimit
-            if not broker.check_daily_loss_limit():
-                print("[Scanner] Verlustlimit erreicht — kein Scan")
-                time.sleep(60)
-                continue
-
             with open("config.json") as f:
                 cfg = json.load(f)
 
-            # Screener einmal täglich morgens laufen lassen
+            # Screener einmal täglich morgens laufen lassen (unabhängig von Marktzeiten)
             ny      = pytz.timezone("America/New_York")
             now_ny  = datetime.now(ny)
             today   = now_ny.strftime("%Y-%m-%d")
@@ -248,9 +236,32 @@ class Scanner:
                 sc.run_screener(push_fn=self.push_fn, max_results=10)
                 last_screen_day = today
 
-            # Aktive Symbole: Basis + Screener-Kandidaten
+            # Aktive Symbole immer ans Dashboard senden
             symbols = sc.get_active_symbols()
             symbols = list(dict.fromkeys(symbols))
+
+            # Marktzeiten prüfen
+            ok, reason = broker.check_market_hours()
+            if not ok:
+                print(f"[Scanner] {reason} — warte...")
+                self.push_fn("scanner", {
+                    "status":    reason,
+                    "last_scan": self.last_scan,
+                    "symbols":   symbols,
+                })
+                time.sleep(60)
+                continue
+
+            # Tägliches Verlustlimit
+            if not broker.check_daily_loss_limit():
+                print("[Scanner] Verlustlimit erreicht — kein Scan")
+                self.push_fn("scanner", {
+                    "status":    "Verlustlimit erreicht",
+                    "last_scan": self.last_scan,
+                    "symbols":   symbols,
+                })
+                time.sleep(60)
+                continue
 
             self.push_fn("scanner", {
                 "status":    "Scanne Märkte...",
@@ -267,6 +278,7 @@ class Scanner:
             self.push_fn("scanner", {
                 "status":    f"Warte {interval//60} Min bis zum nächsten Scan",
                 "last_scan": self.last_scan,
+                "symbols":   symbols,
             })
 
             time.sleep(interval)

@@ -39,6 +39,7 @@ def get_bars_df(symbol: str, days: int = 20) -> Optional[pd.DataFrame]:
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
+        from alpaca.data.enums import DataFeed
 
         dc    = broker.get_data_client()
         end   = datetime.now(pytz.UTC)
@@ -49,6 +50,7 @@ def get_bars_df(symbol: str, days: int = 20) -> Optional[pd.DataFrame]:
             start=start,
             end=end,
             limit=days,
+            feed=DataFeed.IEX,
         )
         bars = dc.get_stock_bars(req)
         if symbol not in bars or len(bars[symbol]) < 10:
