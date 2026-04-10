@@ -130,23 +130,32 @@ def calc_stats() -> dict:
 
 
 def get_weekly_stats() -> dict:
-    """Konto-Verlauf der letzten 7 Tage von Alpaca."""
+    """Konto-Verlauf der letzten 7 Tage direkt via Alpaca REST API."""
     try:
-        from alpaca.trading.requests import GetPortfolioHistoryRequest
-        req   = GetPortfolioHistoryRequest(period="1W", timeframe="1D", extended_hours=False)
-        hist  = broker.get_client().get_portfolio_history(req)
-        equity     = [float(e) for e in (hist.equity or [])]
-        timestamps = list(hist.timestamp or [])
-        profit_loss= [float(p) for p in (hist.profit_loss or [])]
+        import requests as req_lib
+        import pytz
+        headers = {
+            "APCA-API-KEY-ID":     os.getenv("ALPACA_API_KEY"),
+            "APCA-API-SECRET-KEY": os.getenv("ALPACA_SECRET_KEY"),
+        }
+        resp = req_lib.get(
+            "https://paper-api.alpaca.markets/v2/account/portfolio/history",
+            params={"period": "1W", "timeframe": "1D"},
+            headers=headers, timeout=10,
+        )
+        resp.raise_for_status()
+        data       = resp.json()
+        timestamps = data.get("timestamp", [])
+        equity     = data.get("equity", [])
+        pnl_list   = data.get("profit_loss", [])
 
         days = []
         for i, ts in enumerate(timestamps):
-            dt  = datetime.fromtimestamp(ts, tz=__import__("pytz").UTC)
-            pnl = profit_loss[i] if i < len(profit_loss) else 0
+            dt = datetime.fromtimestamp(ts, tz=pytz.UTC)
             days.append({
-                "date": dt.strftime("%a %d.%m."),
-                "equity": round(equity[i], 2) if i < len(equity) else 0,
-                "pnl":    round(pnl, 2),
+                "date":   dt.strftime("%a %d.%m."),
+                "equity": round(float(equity[i]), 2) if i < len(equity) else 0,
+                "pnl":    round(float(pnl_list[i]), 2) if i < len(pnl_list) else 0,
             })
 
         total_week_pnl = round(sum(d["pnl"] for d in days), 2)
