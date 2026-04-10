@@ -274,10 +274,10 @@
 
   <!-- Zusammenfassung -->
   <div class="history-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-    <div class="card"><div class="label">Gesamt Trades</div><div class="value blue" id="h-total">–</div></div>
-    <div class="card"><div class="label">Gesamt PnL</div><div class="value" id="h-pnl">–</div></div>
-    <div class="card"><div class="label">Bester Trade</div><div class="value green" id="h-best">–</div></div>
-    <div class="card"><div class="label">Schlechtester Trade</div><div class="value red" id="h-worst">–</div></div>
+    <div class="card"><div class="label">Gesamt Orders</div><div class="value blue" id="h-total">–</div></div>
+    <div class="card"><div class="label">Gesamt PnL (real.+unreal.)</div><div class="value" id="h-pnl" title="Hover für Details">–</div></div>
+    <div class="card"><div class="label">Bester Tag (realisiert)</div><div class="value green" id="h-best">–</div></div>
+    <div class="card"><div class="label">Schlechtester Tag (real.)</div><div class="value red" id="h-worst">–</div></div>
   </div>
 
   <!-- PnL Chart -->
@@ -525,6 +525,7 @@
     pnlEl.className   = 'value ' + (d.daily_pnl_raw >= 0 ? 'green' : 'red');
 
     pushEquity(d.account_value);
+    window._lastPositions = d.positions_list || [];
     updatePositions(d.positions_list || []);
 
     // Signal-Verteilung Chart synchronisieren
@@ -658,24 +659,36 @@
         return;
       }
 
-      // Trades nach Datum gruppieren für PnL-Berechnung
-      const byDate = {};
-      trades.forEach(t => {
-        if (!byDate[t.date]) byDate[t.date] = { buy: null, sell: null };
-        if (t.side === 'buy')  byDate[t.date].buy  = t;
-        if (t.side === 'sell') byDate[t.date].sell = t;
-      });
+      function round2(v) { return Math.round(v * 100) / 100; }
 
-      // PnL pro Trade-Paar berechnen
-      const pnlByDate = {};
-      Object.entries(byDate).forEach(([date, pair]) => {
-        if (pair.buy && pair.sell) {
-          const pnl = (pair.sell.price - pair.buy.price) * Math.min(pair.buy.qty, pair.sell.qty);
-          pnlByDate[date] = round2(pnl);
+      // ── Realized PnL per Symbol (FIFO) ───────────────────────────
+      // Für jedes Symbol eine Buy-Queue führen, bei Sell den PnL berechnen
+      const buyQueues  = {};   // symbol → [{price, qty}]
+      const pnlByDate  = {};   // date → realized pnl
+
+      // Trades chronologisch sortieren (älteste zuerst für FIFO)
+      const sorted = [...trades].reverse();
+      sorted.forEach(t => {
+        const sym = t.symbol;
+        if (!buyQueues[sym]) buyQueues[sym] = [];
+
+        if (t.side === 'buy') {
+          buyQueues[sym].push({ price: t.price, qty: t.qty });
+        } else {
+          // Sell: PnL gegen FIFO-Buys berechnen
+          let remainQty = t.qty;
+          let realizedPnl = 0;
+          while (remainQty > 0 && buyQueues[sym].length > 0) {
+            const buy = buyQueues[sym][0];
+            const matchQty = Math.min(buy.qty, remainQty);
+            realizedPnl += (t.price - buy.price) * matchQty;
+            buy.qty     -= matchQty;
+            remainQty   -= matchQty;
+            if (buy.qty <= 0) buyQueues[sym].shift();
+          }
+          pnlByDate[t.date] = round2((pnlByDate[t.date] || 0) + realizedPnl);
         }
       });
-
-      function round2(v) { return Math.round(v * 100) / 100; }
 
       // Tabelle füllen
       tbody.innerHTML = trades.map(t => {
@@ -691,20 +704,27 @@
         </tr>`;
       }).join('');
 
-      // Zusammenfassung
-      const pnlValues  = Object.values(pnlByDate);
-      const totalPnl   = round2(pnlValues.reduce((a, b) => a + b, 0));
-      const best       = pnlValues.length ? Math.max(...pnlValues) : 0;
-      const worst      = pnlValues.length ? Math.min(...pnlValues) : 0;
+      // Zusammenfassung (nur realized PnL aus geschlossenen Trades)
+      const pnlValues = Object.values(pnlByDate);
+      const realizedPnl = round2(pnlValues.reduce((a, b) => a + b, 0));
+      const best  = pnlValues.length ? Math.max(...pnlValues) : 0;
+      const worst = pnlValues.length ? Math.min(...pnlValues) : 0;
+
+      // Unrealized PnL aus offenen Positionen (aus letztem Status-Event)
+      const unrealized = (window._lastPositions || []).reduce((s, p) => s + (p.pnl || 0), 0);
+      const totalPnl   = round2(realizedPnl + unrealized);
 
       document.getElementById('h-total').textContent = trades.length;
       const pnlEl = document.getElementById('h-pnl');
       pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + totalPnl + ' $';
       pnlEl.className   = 'value ' + (totalPnl >= 0 ? 'green' : 'red');
-      document.getElementById('h-best').textContent  = '+' + best + ' $';
-      document.getElementById('h-worst').textContent = worst + ' $';
+      // Tooltip erklären
+      pnlEl.title = `Realisiert: ${realizedPnl >= 0 ? '+' : ''}${realizedPnl}$ | Unrealisiert: +${round2(unrealized)}$`;
 
-      // PnL Chart
+      document.getElementById('h-best').textContent  = (best  >= 0 ? '+' : '') + best  + ' $';
+      document.getElementById('h-worst').textContent = (worst >= 0 ? '+' : '') + worst + ' $';
+
+      // PnL Chart (nur realized, pro Tag)
       const dates  = Object.keys(pnlByDate).sort();
       const values = dates.map(d => pnlByDate[d]);
       pnlChart.data.labels               = dates;
