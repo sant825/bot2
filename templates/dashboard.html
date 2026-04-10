@@ -111,6 +111,7 @@
 
       /* Cards: 2 per row on mobile */
       .cards { grid-template-columns:repeat(2, 1fr); gap:8px; margin-bottom:14px; }
+      #week-cards { grid-template-columns:repeat(2, 1fr) !important; }
       .card { padding:12px; }
       .card .value { font-size:1.3rem; }
       .card .label { font-size:0.65rem; }
@@ -179,9 +180,17 @@
     <div class="card"><div class="label">Tages PnL</div><div class="value" id="pnl">–</div></div>
     <div class="card"><div class="label">Offene Pos.</div><div class="value" id="positions">–</div></div>
     <div class="card"><div class="label">Trades heute</div><div class="value green" id="trades">–</div></div>
-    <div class="card"><div class="label">Abgelehnt</div><div class="value yellow" id="skipped">–</div></div>
-    <div class="card"><div class="label">Win-Rate</div><div class="value" id="winrate">–</div></div>
-    <div class="card"><div class="label">Profit Factor</div><div class="value" id="profitfactor">–</div></div>
+    <div class="card"><div class="label">Abgelehnt heute</div><div class="value yellow" id="skipped">–</div></div>
+    <div class="card"><div class="label">Win-Rate (30d)</div><div class="value" id="winrate">–</div></div>
+    <div class="card"><div class="label">Profit Factor (30d)</div><div class="value" id="profitfactor">–</div></div>
+  </div>
+
+  <!-- Wochenübersicht -->
+  <p class="section-title">Wochenübersicht</p>
+  <div id="week-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px"></div>
+  <div class="chart-box" style="margin-bottom:20px">
+    <h2>PnL diese Woche (pro Tag)</h2>
+    <div class="chart-wrap" style="height:160px"><canvas id="weekChart"></canvas></div>
   </div>
 
   <!-- Scanner Status -->
@@ -434,6 +443,46 @@
     }
   });
 
+  // ── Wochen-Chart ─────────────────────────────────────────────
+  const weekChart = new Chart(document.getElementById('weekChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'PnL ($)', data: [], backgroundColor: [], borderRadius: 5 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => (v >= 0 ? '+' : '') + '$' + v.toLocaleString('de-DE') }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+
+  function updateWeekly(w) {
+    if (!w || !w.days || !w.days.length) return;
+    const days   = w.days;
+    const labels = days.map(d => d.date);
+    const values = days.map(d => d.pnl);
+    const colors = values.map(v => v >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)');
+
+    weekChart.data.labels                          = labels;
+    weekChart.data.datasets[0].data               = values;
+    weekChart.data.datasets[0].backgroundColor    = colors;
+    weekChart.update();
+
+    // Tages-Karten
+    const container = document.getElementById('week-cards');
+    const totalPnl  = w.total_week_pnl;
+    const sign      = totalPnl >= 0 ? '+' : '';
+    const color     = totalPnl >= 0 ? '#3fb950' : '#f85149';
+    container.innerHTML = `
+      <div class="card"><div class="label">Wochen PnL</div><div class="value" style="color:${color}">${sign}${totalPnl} $</div></div>
+      ${days.map(d => {
+        const s = d.pnl >= 0 ? '+' : '';
+        const c = d.pnl >= 0 ? '#3fb950' : d.pnl < 0 ? '#f85149' : '#8b949e';
+        return `<div class="card"><div class="label">${d.date}</div><div class="value" style="color:${c};font-size:1.1rem">${s}${d.pnl} $</div></div>`;
+      }).join('')}`;
+  }
+
   // ── Score Chart ───────────────────────────────────────────────
   const scoreChart = new Chart(document.getElementById('scoreChart').getContext('2d'), {
     type:'bar',
@@ -537,14 +586,26 @@
       signalChart.update();
     }
 
-    // Win-Rate & Profit Factor
-    const total = (d.wins||0) + (d.losses||0);
-    const wrEl  = document.getElementById('winrate');
-    wrEl.textContent = total > 0 ? `${d.win_rate}%` : '–';
-    wrEl.className   = 'value ' + (d.win_rate >= 50 ? 'green' : 'red');
+    // Win-Rate & Profit Factor (30-Tage aus Alpaca)
+    const wrEl = document.getElementById('winrate');
+    if (d.win_rate > 0 || (d.wins + d.losses) > 0) {
+      wrEl.textContent = `${d.win_rate}% (${d.wins}W/${d.losses}L)`;
+      wrEl.className   = 'value ' + (d.win_rate >= 50 ? 'green' : 'red');
+    } else {
+      wrEl.textContent = 'Noch keine Trades';
+      wrEl.className   = 'value gray';
+    }
     const pfEl = document.getElementById('profitfactor');
-    pfEl.textContent = d.profit_factor > 0 ? d.profit_factor : '–';
-    pfEl.className   = 'value ' + (d.profit_factor >= 1 ? 'green' : 'red');
+    if (d.profit_factor > 0) {
+      pfEl.textContent = d.profit_factor;
+      pfEl.className   = 'value ' + (d.profit_factor >= 1 ? 'green' : 'red');
+    } else {
+      pfEl.textContent = '–';
+      pfEl.className   = 'value gray';
+    }
+
+    // Wochenübersicht
+    if (d.weekly) updateWeekly(d.weekly);
 
     // Scanner Status
     if (d.scanner) {

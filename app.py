@@ -76,21 +76,83 @@ def ml_confirms_signal(symbol: str, rsi: float, entry_price: float,
 
 
 def calc_stats() -> dict:
-    """Berechnet Win-Rate und Profit-Factor aus heutigen Trades."""
-    wins = losses = gross_profit = gross_loss = 0
-    for t in trades_today:
-        pnl = t.get("pnl", 0)
-        if pnl > 0:
-            wins        += 1
-            gross_profit += pnl
-        elif pnl < 0:
-            losses      += 1
-            gross_loss  += abs(pnl)
-    total = wins + losses
-    win_rate      = round(wins / total * 100, 1) if total > 0 else 0
-    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0
-    return {"win_rate": win_rate, "profit_factor": profit_factor,
-            "wins": wins, "losses": losses}
+    """Win-Rate + Profit-Factor aus Alpaca-Aktivitäten (letzte 30 Tage)."""
+    try:
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+        import pytz
+        from datetime import timedelta
+
+        client = broker.get_client()
+        ny     = pytz.timezone("America/New_York")
+        start  = datetime.now(ny) - timedelta(days=30)
+        req    = GetOrdersRequest(status=QueryOrderStatus.CLOSED, after=start, limit=200)
+        orders = client.get_orders(req)
+
+        # FIFO PnL pro Symbol berechnen
+        buy_queues = {}
+        trade_pnls = []
+        for o in reversed(orders):
+            if "filled" not in str(o.status).lower():
+                continue
+            sym   = o.symbol
+            price = float(o.filled_avg_price or 0)
+            qty   = float(o.qty or 0)
+            if o.side.value == "buy":
+                buy_queues.setdefault(sym, []).append({"price": price, "qty": qty})
+            else:
+                remain = qty
+                pnl    = 0.0
+                queue  = buy_queues.get(sym, [])
+                while remain > 0 and queue:
+                    b = queue[0]
+                    match = min(b["qty"], remain)
+                    pnl    += (price - b["price"]) * match
+                    b["qty"] -= match
+                    remain   -= match
+                    if b["qty"] <= 0:
+                        queue.pop(0)
+                trade_pnls.append(round(pnl, 2))
+
+        wins         = sum(1 for p in trade_pnls if p > 0)
+        losses       = sum(1 for p in trade_pnls if p < 0)
+        gross_profit = sum(p for p in trade_pnls if p > 0)
+        gross_loss   = abs(sum(p for p in trade_pnls if p < 0))
+        total        = wins + losses
+        return {
+            "win_rate":      round(wins / total * 100, 1) if total > 0 else 0,
+            "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0,
+            "wins":          wins,
+            "losses":        losses,
+        }
+    except Exception:
+        return {"win_rate": 0, "profit_factor": 0, "wins": 0, "losses": 0}
+
+
+def get_weekly_stats() -> dict:
+    """Konto-Verlauf der letzten 7 Tage von Alpaca."""
+    try:
+        from alpaca.trading.requests import GetPortfolioHistoryRequest
+        req   = GetPortfolioHistoryRequest(period="1W", timeframe="1D", extended_hours=False)
+        hist  = broker.get_client().get_portfolio_history(req)
+        equity     = [float(e) for e in (hist.equity or [])]
+        timestamps = list(hist.timestamp or [])
+        profit_loss= [float(p) for p in (hist.profit_loss or [])]
+
+        days = []
+        for i, ts in enumerate(timestamps):
+            dt  = datetime.fromtimestamp(ts, tz=__import__("pytz").UTC)
+            pnl = profit_loss[i] if i < len(profit_loss) else 0
+            days.append({
+                "date": dt.strftime("%a %d.%m."),
+                "equity": round(equity[i], 2) if i < len(equity) else 0,
+                "pnl":    round(pnl, 2),
+            })
+
+        total_week_pnl = round(sum(d["pnl"] for d in days), 2)
+        return {"days": days, "total_week_pnl": total_week_pnl}
+    except Exception:
+        return {"days": [], "total_week_pnl": 0}
 
 
 def get_status_data() -> dict:
@@ -132,6 +194,7 @@ def get_status_data() -> dict:
             "signals_sell":   sells,
             "signals_skip":   skipped_today,
             "scanner":        scanner_status,
+            "weekly":         get_weekly_stats(),
         }
     except Exception as e:
         return {"error": str(e)}
