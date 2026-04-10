@@ -178,11 +178,12 @@ class Scanner:
         execute_fn: Funktion die einen Trade ausführt
         push_fn:    Funktion die SSE-Events ans Dashboard schickt
         """
-        self.execute_fn = execute_fn
-        self.push_fn    = push_fn
-        self.models     = {}
-        self.last_scan  = None
+        self.execute_fn   = execute_fn
+        self.push_fn      = push_fn
+        self.models       = {}
+        self.last_scan    = None
         self.last_signals = {}
+        self.last_regime  = None   # Für Regime-Wechsel-Erkennung
 
         # ML-Modelle laden
         for sym in ("AAPL", "GLD", "SPY"):
@@ -340,7 +341,39 @@ class Scanner:
                 continue
 
             regime, atr_pct = get_market_regime(cfg)
-            regime_icons = {"bull": "🐂", "bear": "🐻", "neutral": "〰️"}
+
+            # ── Regime-Wechsel: offene Positionen schließen ───────
+            if self.last_regime and self.last_regime != regime and regime != "neutral":
+                positions = broker.get_open_positions()
+                for p in positions:
+                    side = str(p.side.value)
+                    # Regime wechselt zu Bär → Longs schließen
+                    if regime == "bear" and side == "long":
+                        print(f"[Regime] Wechsel zu BEAR → schließe Long {p.symbol}")
+                        try:
+                            broker.close_position(p.symbol)
+                            self.push_fn("skip", {
+                                "symbol": p.symbol,
+                                "signal": "exit",
+                                "reason": f"Regime-Wechsel zu Bärenmarkt — Long {p.symbol} geschlossen",
+                            })
+                        except Exception as e:
+                            print(f"[Regime] Fehler beim Schließen {p.symbol}: {e}")
+                    # Regime wechselt zu Bull → Shorts schließen
+                    elif regime == "bull" and side == "short":
+                        print(f"[Regime] Wechsel zu BULL → schließe Short {p.symbol}")
+                        try:
+                            broker.close_position(p.symbol)
+                            self.push_fn("skip", {
+                                "symbol": p.symbol,
+                                "signal": "exit",
+                                "reason": f"Regime-Wechsel zu Bullenmarkt — Short {p.symbol} geschlossen",
+                            })
+                        except Exception as e:
+                            print(f"[Regime] Fehler beim Schließen {p.symbol}: {e}")
+
+            self.last_regime = regime
+
             self.push_fn("scanner", {
                 "status":    "Scanne Märkte...",
                 "last_scan": self.last_scan,
