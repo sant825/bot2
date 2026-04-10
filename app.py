@@ -449,7 +449,7 @@ def history():
 
         result = []
         for o in orders:
-            if str(o.status) != "OrderStatus.filled":
+            if "filled" not in str(o.status).lower():
                 continue
             filled = float(o.filled_avg_price or 0)
             qty    = float(o.qty or 0)
