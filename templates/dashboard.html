@@ -197,6 +197,7 @@
   <div class="scanner-bar">
     <div><div class="s-label">Scanner</div><div class="s-val" id="scanner-status">Startet...</div></div>
     <div><div class="s-label">Aktive Symbole</div><div class="s-val" id="scanner-symbols">–</div></div>
+    <div><div class="s-label">Markt-Regime (SPY)</div><div class="s-val" id="scanner-regime">–</div></div>
     <div style="margin-left:auto;text-align:right"><div class="s-label">Letzter Scan</div><div class="s-val" id="scanner-last">–</div></div>
   </div>
 
@@ -613,6 +614,14 @@
       document.getElementById('scanner-last').textContent   = d.scanner.last_scan || '–';
       if (d.scanner.symbols)
         document.getElementById('scanner-symbols').textContent = d.scanner.symbols.join(', ');
+      if (d.scanner.regime) {
+        const regime  = d.scanner.regime;
+        const atr     = d.scanner.atr_pct ?? '–';
+        const label   = regime === 'bull' ? '▲ Bullenmarkt' : regime === 'bear' ? '▼ Bärenmarkt' : '→ Neutral';
+        const color   = regime === 'bull' ? '#3fb950' : regime === 'bear' ? '#f85149' : '#8b949e';
+        document.getElementById('scanner-regime').innerHTML =
+          `<span style="color:${color};font-weight:bold">${label}</span> <span style="color:#484f58;font-size:0.75rem">ATR ${atr}%</span>`;
+      }
     }
   });
 

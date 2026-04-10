@@ -18,6 +18,54 @@ from alpaca.data.enums import DataFeed
 
 import broker
 
+# Cache damit SPY nicht bei jedem Symbol neu geladen wird
+_regime_cache = {"ts": None, "regime": None, "atr_pct": None}
+_REGIME_TTL   = 300   # Sekunden bis Cache abläuft
+
+
+def get_market_regime(cfg: dict) -> tuple[str, float]:
+    """
+    Prüft den Markt-Zustand anhand von SPY:
+    - regime: 'bull' | 'bear' | 'neutral'
+    - atr_pct: aktuelle Volatilität in % (ATR / Kurs)
+    Ergebnis wird 5 Minuten gecacht.
+    """
+    global _regime_cache
+    now = datetime.now(pytz.UTC).timestamp()
+    if _regime_cache["ts"] and now - _regime_cache["ts"] < _REGIME_TTL:
+        return _regime_cache["regime"], _regime_cache["atr_pct"]
+
+    try:
+        df = get_bars_df("SPY", TimeFrame.Hour, limit=220)
+        if df.empty or len(df) < 55:
+            return "neutral", 0.0
+
+        df = calculate_indicators(df)
+        if df.empty:
+            return "neutral", 0.0
+
+        last    = df.iloc[-1]
+        close   = last["close"]
+        ema50   = last["ema_fast"]   # ema_fast = EMA50
+        ema200  = last["ema_slow"]   # ema_slow = EMA200
+        atr_pct = round(last["atr"] / close * 100, 2) if close > 0 else 0.0
+
+        if close > ema50 > ema200:
+            regime = "bull"
+        elif close < ema50 < ema200:
+            regime = "bear"
+        else:
+            regime = "neutral"
+
+        _regime_cache = {"ts": now, "regime": regime, "atr_pct": atr_pct}
+        print(f"[Regime] SPY: {regime.upper()} | ATR%={atr_pct} | "
+              f"Kurs={close:.2f} EMA50={ema50:.2f} EMA200={ema200:.2f}")
+        return regime, atr_pct
+
+    except Exception as e:
+        print(f"[Regime] Fehler: {e}")
+        return "neutral", 0.0
+
 
 def get_bars_df(symbol: str, timeframe: TimeFrame, limit: int = 250) -> pd.DataFrame:
     """Holt Bars von Alpaca als DataFrame."""
@@ -196,6 +244,30 @@ class Scanner:
             self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
             return
 
+        # ── Market-Regime-Filter ─────────────────────────────────
+        # SPY-Trend muss zum Signal passen; extreme Volatilität → Skip
+        regime, atr_pct = get_market_regime(cfg)
+        max_atr  = cfg.get("max_spy_atr_pct", 2.5)   # default 2.5%
+        skip_vol = cfg.get("skip_on_extreme_volatility", True)
+
+        if skip_vol and atr_pct > max_atr:
+            reason = f"Extreme Marktvolatilität (SPY ATR {atr_pct}% > {max_atr}%)"
+            self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+            print(f"[Regime] Skip {symbol}: {reason}")
+            return
+
+        if regime == "bear" and signal == "buy":
+            reason = f"Bärenmarkt-Filter: SPY im Abwärtstrend — kein BUY"
+            self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+            print(f"[Regime] Skip {symbol}: {reason}")
+            return
+
+        if regime == "bull" and signal == "sell":
+            reason = f"Bullenmarkt-Filter: SPY im Aufwärtstrend — kein SELL"
+            self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+            print(f"[Regime] Skip {symbol}: {reason}")
+            return
+
         # ML-Filter
         if symbol in cfg.get("ml_symbols", []) and not self.ml_ok(symbol, last, signal):
             self.push_fn("skip", {"symbol": symbol, "signal": signal,
@@ -267,10 +339,14 @@ class Scanner:
                 time.sleep(60)
                 continue
 
+            regime, atr_pct = get_market_regime(cfg)
+            regime_icons = {"bull": "🐂", "bear": "🐻", "neutral": "〰️"}
             self.push_fn("scanner", {
                 "status":    "Scanne Märkte...",
                 "last_scan": self.last_scan,
                 "symbols":   symbols,
+                "regime":    regime,
+                "atr_pct":   atr_pct,
             })
 
             for symbol in symbols:

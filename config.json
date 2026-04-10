@@ -13,6 +13,8 @@
   "volume_threshold": 0.8,
   "scan_interval_seconds": 300,
   "screener_run_hour": 9,
+  "max_spy_atr_pct": 2.5,
+  "skip_on_extreme_volatility": true,
   "rsi": {
     "period": 14,
     "oversold": 30,
