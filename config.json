@@ -4,16 +4,16 @@
     "base_url": "https://paper-api.alpaca.markets"
   },
   "risk_management": {
-    "risk_per_trade_percent": 1.0,
+    "risk_per_trade_percent": 0.75,
     "risk_reward_ratio": 2.0,
     "max_open_positions": 5,
     "max_daily_loss_percent": 3.0,
-    "trailing_stop_percent": 1.5
+    "trailing_stop_percent": 2.5
   },
   "volume_threshold": 0.8,
   "scan_interval_seconds": 300,
   "screener_run_hour": 9,
-  "max_spy_atr_pct": 2.5,
+  "max_spy_atr_pct": 3.5,
   "skip_on_extreme_volatility": true,
   "rsi": {
     "period": 14,
@@ -38,5 +38,20 @@
     "US500":  "SPY",
     "SPX500": "SPY"
   },
-  "ml_symbols": ["AAPL", "GLD", "SPY"]
+  "ml_symbols": ["AAPL", "GLD", "SPY"],
+  "live_trading": {
+    "enabled": false,
+    "risk_per_trade_percent": 0.25,
+    "max_open_positions": 2,
+    "max_daily_loss_percent": 1.0,
+    "trailing_stop_percent": 2.5
+  },
+  "min_screener_score": 50,
+  "bear_filter_pct": 2.0,
+  "bull_filter_pct": 1.0,
+  "safe_haven_symbols": ["GLD", "GDX", "TLT", "SLV"],
+  "trade_start_hour": 10,
+  "trade_start_minute": 30,
+  "trade_end_hour": 14,
+  "trade_end_minute": 30
 }
