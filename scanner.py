@@ -27,6 +27,50 @@ _REGIME_TTL   = 300   # Sekunden bis Cache abläuft
 _earnings_cache: dict = {}
 _EARNINGS_TTL = 3600 * 24  # 24 Stunden
 
+# VIX Cache
+_vix_cache: dict = {"ts": None, "value": None}
+_VIX_TTL = 900  # 15 Minuten
+
+# Sektor-Zuordnung für Konzentrations-Filter
+SECTOR_MAP = {
+    "AAPL":"tech","MSFT":"tech","NVDA":"tech","AMZN":"tech","GOOGL":"tech",
+    "META":"tech","TSLA":"tech","AVGO":"tech","ORCL":"tech","AMD":"tech",
+    "INTC":"tech","QCOM":"tech","TXN":"tech","MU":"tech","AMAT":"tech",
+    "LRCX":"tech","KLAC":"tech","ADI":"tech","MRVL":"tech","NOW":"tech","XLK":"tech",
+    "JPM":"finance","BAC":"finance","WFC":"finance","GS":"finance","MS":"finance",
+    "C":"finance","BLK":"finance","SCHW":"finance","AXP":"finance","USB":"finance",
+    "PNC":"finance","TFC":"finance","COF":"finance","DFS":"finance","SYF":"finance",
+    "MTB":"finance","RF":"finance","FITB":"finance","KEY":"finance","HBAN":"finance","XLF":"finance",
+    "JNJ":"health","UNH":"health","PFE":"health","ABBV":"health","MRK":"health",
+    "LLY":"health","TMO":"health","ABT":"health","DHR":"health","BMY":"health",
+    "AMGN":"health","GILD":"health","VRTX":"health","REGN":"health","BIIB":"health",
+    "ISRG":"health","MDT":"health","SYK":"health","BSX":"health","EW":"health","XLV":"health",
+    "WMT":"consumer","HD":"consumer","TGT":"consumer","COST":"consumer","MCD":"consumer",
+    "SBUX":"consumer","NKE":"consumer","YUM":"consumer","CMG":"consumer","LOW":"consumer",
+    "DG":"consumer","DLTR":"consumer","TJX":"consumer","ROST":"consumer","ORLY":"consumer",
+    "AZO":"consumer","BBY":"consumer","KR":"consumer","SYY":"consumer","XLP":"consumer",
+    "XOM":"energy","CVX":"energy","COP":"energy","EOG":"energy","SLB":"energy",
+    "MPC":"energy","VLO":"energy","PSX":"energy","OXY":"energy","HAL":"energy",
+    "DVN":"energy","PXD":"energy","FANG":"energy","APA":"energy","HES":"energy",
+    "BKR":"energy","NOV":"energy","FTI":"energy","WMB":"energy","OKE":"energy","XLE":"energy",
+    "GE":"industrial","HON":"industrial","MMM":"industrial","CAT":"industrial","DE":"industrial",
+    "BA":"industrial","LMT":"industrial","RTX":"industrial","NOC":"industrial","GD":"industrial",
+    "EMR":"industrial","ITW":"industrial","PH":"industrial","ROK":"industrial","ETN":"industrial",
+    "DOV":"industrial","AME":"industrial","XYL":"industrial","FTV":"industrial","XLI":"industrial",
+    "FCX":"materials","NEM":"materials","GOLD":"materials","AA":"materials","ALB":"materials",
+    "MP":"materials","CCJ":"materials","X":"materials","CLF":"materials","NUE":"materials","XLB":"materials",
+    "AMT":"realestate","PLD":"realestate","CCI":"realestate","EQIX":"realestate","SPG":"realestate",
+    "O":"realestate","DLR":"realestate","PSA":"realestate","EXR":"realestate","AVB":"realestate",
+    "VNQ":"realestate","XLRE":"realestate",
+    "NEE":"utilities","DUK":"utilities","SO":"utilities","AEP":"utilities","D":"utilities",
+    "EXC":"utilities","XEL":"utilities","ES":"utilities","WEC":"utilities","ETR":"utilities","XLU":"utilities",
+    "T":"telecom","VZ":"telecom","TMUS":"telecom","XLC":"telecom",
+    "GLD":"commodity","SLV":"commodity","GDX":"commodity",
+    "SPY":"etf","QQQ":"etf","IWM":"etf","DIA":"etf","TLT":"etf","HYG":"etf","LQD":"etf",
+    "EFA":"etf","EEM":"etf","VTI":"etf","VOO":"etf","IVV":"etf","ARKK":"etf",
+    "SQQQ":"etf","TQQQ":"etf","UVXY":"etf",
+}
+
 
 def _get_next_earnings(symbol: str):
     """Gibt nächstes Earnings-Datum zurück oder None bei Fehler (nie blockierend)."""
@@ -53,6 +97,44 @@ def _get_next_earnings(symbol: str):
     except Exception:
         _earnings_cache[symbol] = (now, None)
         return None
+
+
+def get_vix_level() -> float:
+    """Holt aktuellen VIX-Stand via yfinance. Cache: 15 Min."""
+    global _vix_cache
+    now = datetime.now(pytz.UTC).timestamp()
+    if _vix_cache["ts"] and now - _vix_cache["ts"] < _VIX_TTL and _vix_cache["value"]:
+        return _vix_cache["value"]
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("^VIX").history(period="1d")
+        if not hist.empty:
+            val = float(hist["Close"].iloc[-1])
+            _vix_cache = {"ts": now, "value": val}
+            return val
+    except Exception:
+        pass
+    return 0.0
+
+
+def check_pregap(symbol: str, cfg: dict) -> tuple[bool, str]:
+    """Prüft ob eine Aktie mit einem zu großen Gap geöffnet hat (vs. Vortagesschluss)."""
+    max_gap = cfg.get("max_gap_pct", 2.0)
+    try:
+        df = get_bars_df(symbol, TimeFrame.Day, limit=3)
+        if df.empty or len(df) < 2:
+            return True, ""
+        yesterday_close = df.iloc[-2]["close"]
+        today_open      = df.iloc[-1]["open"]
+        if yesterday_close <= 0:
+            return True, ""
+        gap_pct = abs(today_open - yesterday_close) / yesterday_close * 100
+        if gap_pct > max_gap:
+            direction = "aufwärts" if today_open > yesterday_close else "abwärts"
+            return False, f"Pre-Market Gap {gap_pct:.1f}% {direction} — überspringe"
+    except Exception:
+        pass
+    return True, ""
 
 
 def check_earnings_safe(symbol: str, cfg: dict) -> tuple[bool, str]:
@@ -260,8 +342,12 @@ class Scanner:
         self.models          = {}
         self.last_scan       = None
         self.last_regime     = None
-        self._entry_times: dict  = {}   # {symbol: datetime} — Einstiegszeit
-        self._partial_taken: dict = {}  # {symbol: bool} — Breakeven Stop gesetzt?
+        self._entry_times: dict       = {}   # {symbol: datetime} — Einstiegszeit
+        self._partial_taken: dict     = {}   # {symbol: bool} — Breakeven Stop gesetzt?
+        self._known_positions: set    = set()  # Bekannte offene Positionen
+        self._known_pos_pnl: dict     = {}     # {symbol: last_pnl} für Verlust-Erkennung
+        self._block_today: set        = set()  # Symbole heute nicht neu handeln
+        self._last_block_day: str     = ""
 
         for sym in ("AAPL", "GLD", "SPY"):
             m = xgb.XGBClassifier()
@@ -484,6 +570,21 @@ class Scanner:
             except Exception as e:
                 print(f"[Stale] Fehler beim Schließen {sym}: {e}")
 
+    def check_sector_concentration(self, symbol: str, signal: str,
+                                     cfg: dict, open_map: dict) -> tuple[bool, str]:
+        """Blockiert wenn bereits eine Position im selben Sektor offen ist."""
+        max_per_sector = cfg.get("max_positions_per_sector", 1)
+        sector = SECTOR_MAP.get(symbol)
+        if sector in (None, "etf", "commodity"):
+            return True, ""
+        count = sum(
+            1 for sym in open_map
+            if SECTOR_MAP.get(sym) == sector
+        )
+        if count >= max_per_sector:
+            return False, f"Sektor {sector}: bereits {count} Position(en) offen — überspringe"
+        return True, ""
+
     def ml_ok(self, symbol: str, row, signal: str) -> bool:
         model = self.models.get(symbol)
         if not model:
@@ -548,7 +649,12 @@ class Scanner:
         print(f"[Scanner] Signal: {signal.upper()} {symbol} | 1H RSI={last['rsi']:.1f}"
               + (f" | Score={score}" if score else ""))
 
-        # ── 2. Offene Position prüfen ────────────────────────────
+        # ── 2. Block-Liste prüfen (Fix 2 — kein Re-Entry nach Stop-Out) ─
+        if symbol in self._block_today:
+            print(f"[Scanner] {symbol}: Heute bereits mit Verlust geschlossen — überspringe")
+            return
+
+        # ── 3. Offene Position prüfen ────────────────────────────
         try:
             open_positions = broker.get_open_positions()
             open_map = {str(p.symbol): str(p.side.value) for p in open_positions}
@@ -561,14 +667,38 @@ class Scanner:
             print(f"[Scanner] {symbol}: Position bereits offen ({current_side}) — überspringe")
             return
 
-        # ── 3. Volumen prüfen ─────────────────────────────────────
+        # ── 4. Sektor-Konzentration (Fix 4) ──────────────────────
+        ok, reason = self.check_sector_concentration(symbol, signal, cfg, open_map)
+        if not ok:
+            self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+            print(f"[Sektor] Skip {symbol}: {reason}")
+            return
+
+        # ── 5. Volumen prüfen ─────────────────────────────────────
         vol_threshold = cfg.get("volume_threshold", 0.8)
         if last["vol_ratio"] < vol_threshold:
             reason = f"Volumen zu niedrig ({last['vol_ratio']:.2f}x Durchschnitt)"
             self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
             return
 
-        # ── 4. Earnings-Filter (Fix 1) ────────────────────────────
+        # ── 6. Pre-Market Gap Filter (Fix 5) ─────────────────────
+        ok, reason = check_pregap(symbol, cfg)
+        if not ok:
+            self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+            print(f"[Gap] Skip {symbol}: {reason}")
+            return
+
+        # ── 7. VIX-Filter (Fix 6) ─────────────────────────────────
+        vix_max = cfg.get("vix_max", 30.0)
+        if vix_max > 0:
+            vix = get_vix_level()
+            if vix > vix_max:
+                reason = f"VIX {vix:.1f} > {vix_max} — Panikmarkt, kein neuer Trade"
+                self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
+                print(f"[VIX] Skip {symbol}: {reason}")
+                return
+
+        # ── 8. Earnings-Filter (Fix 1) ────────────────────────────
         ok, reason = check_earnings_safe(symbol, cfg)
         if not ok:
             self.push_fn("skip", {"symbol": symbol, "signal": signal, "reason": reason})
@@ -701,6 +831,27 @@ class Scanner:
 
             symbols = sc.get_active_symbols()
             symbols = list(dict.fromkeys(symbols))
+
+            # Fix 2: Block-Liste täglich zurücksetzen + verschwundene Positionen tracken
+            if self._last_block_day != today:
+                self._block_today.clear()
+                self._last_block_day = today
+            try:
+                current_positions = broker.get_open_positions()
+                current_syms = {p.symbol for p in current_positions}
+                # Positionen die verschwunden sind ohne dass wir sie geschlossen haben
+                disappeared = self._known_positions - current_syms
+                for sym in disappeared:
+                    last_pnl = self._known_pos_pnl.get(sym, 0)
+                    if last_pnl < 0:
+                        self._block_today.add(sym)
+                        print(f"[Block] {sym}: Stop-Out erkannt (PnL {last_pnl:+.2f}$) — blockiert heute")
+                # Aktuelle PnL-Werte merken
+                for p in current_positions:
+                    self._known_pos_pnl[p.symbol] = float(p.unrealized_pl or 0)
+                self._known_positions = current_syms
+            except Exception:
+                pass
 
             # Marktzeiten prüfen
             ok, reason = broker.check_market_hours()
