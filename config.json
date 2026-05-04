@@ -46,12 +46,15 @@
     "max_daily_loss_percent": 1.0,
     "trailing_stop_percent": 2.5
   },
-  "min_screener_score": 50,
+  "min_screener_score": 65,
   "bear_filter_pct": 2.0,
   "bull_filter_pct": 1.0,
   "safe_haven_symbols": ["GLD", "GDX", "TLT", "SLV"],
   "trade_start_hour": 10,
   "trade_start_minute": 30,
-  "trade_end_hour": 14,
-  "trade_end_minute": 30
+  "trade_end_hour": 15,
+  "trade_end_minute": 0,
+  "min_hold_minutes": 30,
+  "max_hold_days": 2,
+  "earnings_days_buffer": 5
 }

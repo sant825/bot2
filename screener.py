@@ -18,6 +18,40 @@ from alpaca.trading.enums import AssetClass, AssetStatus
 # Feste Basis-Symbole die immer gescannt werden
 BASE_SYMBOLS = ["AAPL", "GLD", "SPY"]
 
+# Kuratierte Liste liquider S&P 500 Aktien + ETFs (hohe Handelsvolumen)
+LIQUID_UNIVERSE = [
+    # Mega-Cap Tech
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "ORCL", "AMD",
+    "INTC", "QCOM", "TXN", "MU", "AMAT", "LRCX", "KLAC", "ADI", "MRVL", "NOW",
+    # Finanzen
+    "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "USB",
+    "PNC", "TFC", "COF", "DFS", "SYF", "MTB", "RF", "FITB", "KEY", "HBAN",
+    # Gesundheit
+    "JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY", "TMO", "ABT", "DHR", "BMY",
+    "AMGN", "GILD", "VRTX", "REGN", "BIIB", "ISRG", "MDT", "SYK", "BSX", "EW",
+    # Konsum
+    "WMT", "HD", "TGT", "COST", "AMZN", "MCD", "SBUX", "NKE", "YUM", "CMG",
+    "LOW", "DG", "DLTR", "TJX", "ROST", "ORLY", "AZO", "BBY", "KR", "SYY",
+    # Energie
+    "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "VLO", "PSX", "OXY", "HAL",
+    "DVN", "PXD", "FANG", "APA", "HES", "BKR", "NOV", "FTI", "WMB", "OKE",
+    # Industrie
+    "GE", "HON", "MMM", "CAT", "DE", "BA", "LMT", "RTX", "NOC", "GD",
+    "EMR", "ITW", "PH", "ROK", "ETN", "DOV", "AME", "XYL", "FTV", "IEX",
+    # Grundstoffe / Rohstoffe
+    "FCX", "NEM", "GOLD", "AA", "ALB", "MP", "CCJ", "X", "CLF", "NUE",
+    # Immobilien (REITs)
+    "AMT", "PLD", "CCI", "EQIX", "SPG", "O", "DLR", "PSA", "EXR", "AVB",
+    # Versorger
+    "NEE", "DUK", "SO", "AEP", "D", "EXC", "XEL", "ES", "WEC", "ETR",
+    # Telekommunikation
+    "T", "VZ", "TMUS",
+    # ETFs (immer liquide)
+    "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "GDX", "TLT", "HYG", "LQD",
+    "XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLB", "XLRE", "XLC",
+    "EFA", "EEM", "VNQ", "VTI", "VOO", "IVV", "ARKK", "SQQQ", "TQQQ", "UVXY",
+]
+
 # Aktuelle Top-Kandidaten vom Screener
 screener_results = []
 last_screen_time = None
@@ -149,14 +183,15 @@ def calculate_score(df: pd.DataFrame, symbol: str) -> Optional[dict]:
             score += 5  # Zu wenig Bewegung
 
         return {
-            "symbol":    symbol,
-            "score":     round(score, 1),
-            "signal":    signal,
-            "price":     round(close, 2),
-            "rsi":       round(rsi, 1),
-            "vol_ratio": round(vol_ratio, 2),
-            "atr_pct":   round(atr_pct, 2),
-            "trend":     "bullisch" if close > ema50 else "bärisch",
+            "symbol":       symbol,
+            "score":        round(score, 1),
+            "signal":       signal,
+            "price":        round(close, 2),
+            "rsi":          round(rsi, 1),
+            "vol_ratio":    round(vol_ratio, 2),
+            "atr_pct":      round(atr_pct, 2),
+            "trend":        "bullisch" if close > ema50 else "bärisch",
+            "above_ema200": bool(close > ema200),
         }
     except Exception:
         return None
@@ -172,26 +207,14 @@ def run_screener(push_fn=None, max_results: int = 10) -> list:
     if push_fn:
         push_fn("screener", {"status": "Scanne Markt...", "results": [], "progress": 0})
 
-    try:
-        assets = get_all_assets()
-    except Exception as e:
-        print(f"[Screener] Fehler beim Laden der Assets: {e}")
-        return []
-
-    # Auf liquide, bekannte Aktien beschränken (S&P500 ähnlich)
-    # Filter: nur Aktien mit bestimmten Eigenschaften
     candidates = []
-    total      = min(len(assets), 500)  # Max 500 prüfen
-    checked    = 0
+    symbols_to_scan = list(dict.fromkeys(LIQUID_UNIVERSE))  # Duplikate entfernen
+    total   = len(symbols_to_scan)
+    checked = 0
 
-    for asset in assets[:500]:
-        symbol = asset.symbol
-        # Symbole mit Sonderzeichen überspringen
-        if not symbol.isalpha() or len(symbol) > 5:
-            continue
-
+    for symbol in symbols_to_scan:
         checked += 1
-        if checked % 50 == 0:
+        if checked % 30 == 0:
             progress = int(checked / total * 100)
             print(f"[Screener] {checked}/{total} geprüft...")
             if push_fn:
